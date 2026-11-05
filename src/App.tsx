@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight, Check, ChevronDown, ExternalLink, FileText, Filter, Globe2, Linkedin, Mail, Menu, Search, ShieldCheck, Sparkles, X } from 'lucide-react';
 
 type Kind = 'experience' | 'projects' | 'education' | 'learning' | 'fellowships' | 'volunteering' | 'awards' | 'articles';
-type Entry = { slug:string; kind:Kind; title:string; org:string; period:string; category:string; summary:string; body:string[]; tags:string[]; status:'published'|'draft'; featured?:boolean; related?:string[]; image?:string; gallery?:string[]; document?:string; externalLinks?:{label:string;href:string}[] };
+type Entry = { _id?:string; slug:string; kind:Kind; title:string; org:string; period:string; category:string; summary:string; body:string[]; tags:string[]; status:'published'|'draft'; featured?:boolean; related?:string[]; image?:string; gallery?:string[]; document?:string; externalLinks?:{label:string;href:string}[] };
 
 const nav = [{label:'About', href:'/about'}, {label:'Work', href:'/experience'}, {label:'Projects', href:'/projects'}, {label:'Learning', href:'/learning'}, {label:'Writing', href:'/articles'}];
 const groups = [{label:'Experience', kind:'experience' as Kind}, {label:'Projects', kind:'projects' as Kind}, {label:'Education', kind:'education' as Kind}, {label:'Learning & certifications', kind:'learning' as Kind}, {label:'Fellowships', kind:'fellowships' as Kind}, {label:'Volunteering', kind:'volunteering' as Kind}, {label:'Awards', kind:'awards' as Kind}, {label:'Articles', kind:'articles' as Kind}];
@@ -22,6 +22,8 @@ const entries: Entry[] = [
 ];
 
 const kindLabel = (kind:Kind) => groups.find(g=>g.kind===kind)?.label ?? kind;
+const API_BASE = (import.meta.env.VITE_ANANSI_API_URL || '').replace(/\/$/,'');
+const apiUrl = (path:string) => `${API_BASE}${path}`;
 const STORAGE_KEY = 'catelle-site-entries-v1';
 const publishedEntries = (items:Entry[]) => items.filter(e=>e.status==='published');
 const curatedEntries: Entry[] = [
@@ -53,7 +55,24 @@ const curatedEntries: Entry[] = [
   {slug:'cyc-africa-technology-officer',kind:'volunteering',title:'Technology Officer',org:'Commonwealth Youth Council – Africa Representative Office',period:'June 2025 – Present',category:'Volunteer',summary:'Supporting technology and curriculum activities for the Commonwealth Youth Council’s Africa representative office.',body:['I support technology-related activities and curriculum facilitation within the office of the Commonwealth Youth Council Africa representative.'],tags:['Technology','Youth','Curriculum'],status:'published'},
 ];
 const publicSeedEntries = entries.map(e=>e.slug==='st-digital'?{...e,body:['At ST DIGITAL, my work connects digital transformation goals to practical delivery. I contribute to making systems clearer, more dependable and more useful for the people who rely on them.']}:e.slug==='sykoti-center'?{...e,body:['I founded and coordinate Sykoti Center, a community initiative that connects learning, digital participation and the needs of young people.']}:e.slug==='technical-practice'?{...e,body:['My technical practice spans software development, quality assurance and security-minded delivery: building carefully, testing what matters and keeping risk visible.']}:e.slug==='st-digital-work'?{...e,body:['This project record brings together my contribution to digital transformation and digital solutions work at ST DIGITAL.']}:e.slug==='sykoti-center-project'?{...e,body:['Sykoti Center is the community initiative I founded to connect technology, learning and participation.']}:e);
-function useSiteEntries(){ const [items,setItems]=useState<Entry[]>(loadCuratedEntries); const save=(next:Entry[])=>{ setItems(next); localStorage.setItem(CURATED_STORAGE_KEY,JSON.stringify(next)); }; return [items,save] as const; }
+async function persistEntries(next:Entry[], previous:Entry[]){
+  const previousBySlug=new Map(previous.map(entry=>[entry.slug,entry]));
+  const saved=await Promise.all(next.map(async entry=>{
+    const before=previousBySlug.get(entry.slug);
+    if(before&&JSON.stringify(before)===JSON.stringify(entry)) return entry;
+    const response=await fetch(entry._id?apiUrl(`/api/portfolio/${entry._id}`):apiUrl('/api/portfolio'),{method:entry._id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(entry)});
+    if(!response.ok) throw new Error(`Could not save ${entry.title}`);
+    return await response.json() as Entry;
+  }));
+  await Promise.all(previous.filter(entry=>!next.some(item=>item.slug===entry.slug)&&entry._id).map(entry=>fetch(apiUrl(`/api/portfolio/${entry._id}`),{method:'DELETE'})));
+  return saved;
+}
+function useSiteEntries(){
+  const [items,setItems]=useState<Entry[]>(curatedEntries);
+  useEffect(()=>{let cancelled=false;(async()=>{try{const response=await fetch(apiUrl('/api/portfolio?scope=admin'));if(!response.ok)throw new Error('Portfolio API unavailable');const remote=await response.json() as Entry[];if(remote.length){if(!cancelled)setItems(remote);return}const seeded=await persistEntries(curatedEntries,[]);if(!cancelled)setItems(seeded);}catch{const fallback=loadCuratedEntries();if(!cancelled)setItems(fallback);}})();return()=>{cancelled=true}},[]);
+  const save=(next:Entry[])=>{const previous=items;setItems(next);void persistEntries(next,previous).then(setItems).catch(()=>localStorage.setItem(CURATED_STORAGE_KEY,JSON.stringify(next)));};
+  return [items,save] as const;
+}
 const CURATED_STORAGE_KEY = 'catelle-site-entries-v4';
 function loadCuratedEntries(){
   try {
