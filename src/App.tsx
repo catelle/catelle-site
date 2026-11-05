@@ -70,7 +70,7 @@ async function persistEntries(next:Entry[], previous:Entry[]){
 }
 function useSiteEntries(){
   const [items,setItems]=useState<Entry[]>(curatedEntries);
-  useEffect(()=>{let cancelled=false;(async()=>{try{const scope=window.location.pathname==='/admin'?'?scope=admin':'';const response=await fetch(apiUrl(`/api/portfolio${scope}`));if(!response.ok)throw new Error('Portfolio API unavailable');const remote=await response.json() as Entry[];if(remote.length){if(!cancelled)setItems(remote);return}if(window.location.pathname==='/admin'){const seeded=await persistEntries(curatedEntries,[]);if(!cancelled)setItems(seeded);}}catch{const fallback=loadCuratedEntries();if(!cancelled)setItems(fallback);}})();return()=>{cancelled=true}},[]);
+  useEffect(()=>{let cancelled=false;(async()=>{try{const scope=window.location.pathname==='/admin'?'?scope=admin':'';const response=await fetch(apiUrl(`/api/portfolio${scope}`));if(!response.ok)throw new Error('Portfolio API unavailable');const remote=await response.json() as Entry[];if(remote.length){if(!cancelled)setItems(remote);return}if(window.location.pathname==='/admin'){const seed=loadCuratedEntries();const seeded=await persistEntries(seed,[]);if(!cancelled)setItems(seeded);}}catch{const fallback=loadCuratedEntries();if(!cancelled)setItems(fallback);}})();return()=>{cancelled=true}},[]);
   const save=(next:Entry[])=>{const previous=items;setItems(next);void persistEntries(next,previous).then(setItems).catch(()=>localStorage.setItem(CURATED_STORAGE_KEY,JSON.stringify(next)));};
   return [items,save] as const;
 }
