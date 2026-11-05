@@ -60,7 +60,8 @@ async function persistEntries(next:Entry[], previous:Entry[]){
   const saved=await Promise.all(next.map(async entry=>{
     const before=previousBySlug.get(entry.slug);
     if(before&&JSON.stringify(before)===JSON.stringify(entry)) return entry;
-    const response=await fetch(entry._id?apiUrl(`/api/portfolio/${entry._id}`):apiUrl('/api/portfolio'),{method:entry._id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(entry)});
+    const id=entry._id || before?._id;
+    const response=await fetch(id?apiUrl(`/api/portfolio/${id}`):apiUrl('/api/portfolio'),{method:id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(entry)});
     if(!response.ok) throw new Error(`Could not save ${entry.title}`);
     return await response.json() as Entry;
   }));
